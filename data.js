@@ -34,6 +34,11 @@ const AppData = {
     const saved = localStorage.getItem('rg_reviews');
     if (saved) {
       this.reviews = JSON.parse(saved);
+      this.reviews.forEach(r => {
+        if (!r.progress) r.progress = [];
+        if (!r.keywords) r.keywords = this.matchKeywords(r.content);
+      });
+      this.saveReviews();
     }
   },
 
@@ -52,14 +57,13 @@ const AppData = {
     localStorage.setItem('rg_drafts', JSON.stringify(this.drafts));
   },
 
+  matchKeywords(content) {
+    if (!content) return [];
+    return this.config.keywords.filter(kw => content.includes(kw));
+  },
+
   generateMockData() {
     const today = new Date();
-    const platforms = [
-      { id: 'dianping', name: '大众点评', icon: '📋' },
-      { id: 'waimai', name: '外卖平台', icon: '🛵' },
-      { id: 'video', name: '短视频探店', icon: '📱' },
-      { id: 'community', name: '本地社群', icon: '👥' }
-    ];
 
     const mockReviews = [
       {
@@ -77,7 +81,8 @@ const AppData = {
         date: new Date(today.getTime() - 2 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         riskLevel: 'high',
-        handleNote: ''
+        handleNote: '',
+        progress: []
       },
       {
         id: 'r002',
@@ -94,7 +99,8 @@ const AppData = {
         date: new Date(today.getTime() - 5 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         riskLevel: 'high',
-        handleNote: ''
+        handleNote: '',
+        progress: []
       },
       {
         id: 'r003',
@@ -112,7 +118,8 @@ const AppData = {
         date: new Date(today.getTime() - 8 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         riskLevel: 'high',
-        handleNote: ''
+        handleNote: '',
+        progress: []
       },
       {
         id: 'r004',
@@ -129,7 +136,8 @@ const AppData = {
         date: new Date(today.getTime() - 12 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         riskLevel: 'high',
-        handleNote: ''
+        handleNote: '',
+        progress: []
       },
       {
         id: 'r005',
@@ -146,7 +154,8 @@ const AppData = {
         date: new Date(today.getTime() - 15 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         riskLevel: 'medium',
-        handleNote: ''
+        handleNote: '',
+        progress: []
       },
       {
         id: 'r006',
@@ -163,7 +172,8 @@ const AppData = {
         date: new Date(today.getTime() - 20 * 60 * 60 * 1000).toISOString(),
         status: 'pending',
         riskLevel: 'low',
-        handleNote: ''
+        handleNote: '',
+        progress: []
       },
       {
         id: 'r007',
@@ -180,7 +190,26 @@ const AppData = {
         date: new Date(today.getTime() - 36 * 60 * 60 * 1000).toISOString(),
         status: 'misunderstanding',
         riskLevel: 'low',
-        handleNote: '正面评价附带排队建议，已标记为误会，不影响口碑。'
+        handleNote: '正面评价附带排队建议，已标记为误会，不影响口碑。',
+        progress: []
+      },
+      {
+        id: 'r008',
+        platform: 'community',
+        platformName: '本地社群',
+        store: '味道轩中餐厅（开发区店）',
+        rating: 2,
+        content: '昨天点的外卖，等了快两个小时才到，打电话催了三次。到的时候汤都洒了，态度差还怪我们自己没说清楚地址。真的受不了这种服务差！',
+        keywords: ['态度差', '服务差', '排队久'],
+        likes: 15,
+        sharedByInfluencer: false,
+        hasEvidence: false,
+        author: '失望的食客',
+        date: new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'contact',
+        riskLevel: 'medium',
+        handleNote: '已联系顾客了解情况',
+        progress: ['contacted']
       }
     ];
 
@@ -197,6 +226,20 @@ const AppData = {
     this.saveConfig();
   },
 
+  getReviewsByTimeRange(range) {
+    const now = new Date();
+    if (range === 'all') return this.reviews;
+    if (range === 'today') {
+      const today = now.toDateString();
+      return this.reviews.filter(r => new Date(r.date).toDateString() === today);
+    }
+    if (range === 'week') {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return this.reviews.filter(r => new Date(r.date) >= weekAgo);
+    }
+    return this.reviews;
+  },
+
   getTodayReviews() {
     const today = new Date().toDateString();
     return this.reviews.filter(r => new Date(r.date).toDateString() === today);
@@ -211,8 +254,49 @@ const AppData = {
     return this.reviews.filter(r => r.status === status);
   },
 
+  getReviewsByProgress(progress) {
+    if (progress === 'all') return this.reviews;
+    if (progress === 'none') return this.reviews.filter(r => !r.progress || r.progress.length === 0);
+    return this.reviews.filter(r => r.progress && r.progress.includes(progress));
+  },
+
   getReviewById(id) {
     return this.reviews.find(r => r.id === id);
+  },
+
+  addReview(reviewData) {
+    const platformMap = {
+      dianping: '大众点评',
+      waimai: '外卖平台',
+      video: '短视频探店',
+      community: '本地社群'
+    };
+    const storeName = AppData.config.storeName || '';
+    const storeLabel = reviewData.storeBranch ? `${storeName}（${reviewData.storeBranch}）` : storeName;
+    const keywords = this.matchKeywords(reviewData.content);
+
+    const review = {
+      id: 'r' + Date.now(),
+      platform: reviewData.platform,
+      platformName: platformMap[reviewData.platform] || reviewData.platform,
+      store: storeLabel,
+      rating: reviewData.rating,
+      content: reviewData.content,
+      keywords: keywords,
+      likes: reviewData.likes || 0,
+      sharedByInfluencer: reviewData.sharedByInfluencer || false,
+      hasEvidence: reviewData.hasEvidence || false,
+      author: reviewData.author || '手动录入',
+      date: new Date().toISOString(),
+      status: 'pending',
+      riskLevel: reviewData.riskLevel || 'medium',
+      handleNote: '',
+      progress: []
+    };
+
+    this.reviews.unshift(review);
+    this.saveReviews();
+    return review;
   },
 
   updateReviewStatus(id, status, note = '') {
@@ -223,6 +307,32 @@ const AppData = {
       review.handleDate = new Date().toISOString();
       this.saveReviews();
     }
+  },
+
+  updateReviewProgress(id, progressItem) {
+    const review = this.getReviewById(id);
+    if (review) {
+      if (!review.progress) review.progress = [];
+      if (!review.progress.includes(progressItem)) {
+        review.progress.push(progressItem);
+        this.saveReviews();
+      }
+    }
+  },
+
+  removeReviewProgress(id, progressItem) {
+    const review = this.getReviewById(id);
+    if (review && review.progress) {
+      review.progress = review.progress.filter(p => p !== progressItem);
+      this.saveReviews();
+    }
+  },
+
+  recalcKeywords() {
+    this.reviews.forEach(r => {
+      r.keywords = this.matchKeywords(r.content);
+    });
+    this.saveReviews();
   },
 
   addDraft(draft) {
@@ -237,6 +347,10 @@ const AppData = {
   deleteDraft(id) {
     this.drafts = this.drafts.filter(d => d.id !== id);
     this.saveDrafts();
+  },
+
+  getDraftsForReview(reviewId) {
+    return this.drafts.filter(d => d.reviewId === reviewId);
   }
 };
 
@@ -474,5 +588,20 @@ const ReplyTemplates = {
 
   getTemplate(category, tone) {
     return this.templates[category]?.[tone] || '';
+  },
+
+  guessCategory(keywords) {
+    const map = {
+      '卫生': 'hygiene', '不干净': 'hygiene', '脏': 'hygiene',
+      '态度差': 'attitude', '服务差': 'attitude', '态度': 'attitude',
+      '排队久': 'wait', '等': 'wait', '慢': 'wait',
+      '难吃': 'taste', '口味': 'taste', '味道': 'taste',
+      '贵': 'price', '价格': 'price', '欺诈': 'price', '套路': 'price', '坑': 'price'
+    };
+    if (!keywords || keywords.length === 0) return 'general';
+    for (const kw of keywords) {
+      if (map[kw]) return map[kw];
+    }
+    return 'general';
   }
 };

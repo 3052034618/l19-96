@@ -3,6 +3,8 @@ const App = {
   selectedReviewId: null,
   currentCategory: 'hygiene',
   currentTone: 'sincere',
+  currentTimeRange: 'today',
+  linkedReviewId: null,
 
   init() {
     AppData.init();
@@ -39,6 +41,17 @@ const App = {
     document.getElementById('addItem').addEventListener('click', () => {
       this.addItem();
     });
+    document.getElementById('addKeyword').addEventListener('click', () => {
+      this.addKeyword();
+    });
+
+    document.querySelectorAll('.range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.currentTimeRange = btn.dataset.range;
+        document.querySelectorAll('.range-btn').forEach(b => b.classList.toggle('active', b.dataset.range === this.currentTimeRange));
+        this.renderMonitor();
+      });
+    });
 
     document.getElementById('riskLevelFilter').addEventListener('change', () => {
       this.renderMonitor();
@@ -49,6 +62,25 @@ const App = {
 
     document.getElementById('reviewStatusFilter').addEventListener('change', () => {
       this.renderReviewList();
+    });
+    document.getElementById('reviewProgressFilter').addEventListener('change', () => {
+      this.renderReviewList();
+    });
+
+    document.getElementById('btnAddReview').addEventListener('click', () => {
+      this.openAddReviewModal();
+    });
+    document.getElementById('closeAddReview').addEventListener('click', () => {
+      this.closeAddReviewModal();
+    });
+    document.getElementById('cancelAddReview').addEventListener('click', () => {
+      this.closeAddReviewModal();
+    });
+    document.getElementById('confirmAddReview').addEventListener('click', () => {
+      this.confirmAddReview();
+    });
+    document.getElementById('inputContent').addEventListener('input', () => {
+      this.updateMatchedKeywords();
     });
 
     document.querySelectorAll('.category-btn').forEach(btn => {
@@ -112,7 +144,9 @@ const App = {
     const platformFilter = document.getElementById('platformFilter').value;
     const storeFilter = document.getElementById('storeSelect').value;
 
-    let reviews = [...AppData.reviews].sort((a, b) => {
+    let reviews = AppData.getReviewsByTimeRange(this.currentTimeRange);
+
+    reviews = [...reviews].sort((a, b) => {
       const levelOrder = { high: 3, medium: 2, low: 1 };
       const levelDiff = levelOrder[b.riskLevel] - levelOrder[a.riskLevel];
       if (levelDiff !== 0) return levelDiff;
@@ -131,8 +165,14 @@ const App = {
       reviews = reviews.filter(r => r.store.includes(storeFilter));
     }
 
+    const rangeLabels = { today: '今日', week: '近7天', all: '全部' };
+    const rangeLabel = rangeLabels[this.currentTimeRange];
     const todayCount = AppData.getTodayReviews().length;
-    document.getElementById('todayRiskCount').textContent = `共 ${reviews.length} 条（今日新增 ${todayCount} 条）`;
+    let countText = `${rangeLabel}共 ${reviews.length} 条`;
+    if (this.currentTimeRange !== 'today') {
+      countText += `（今日新增 ${todayCount} 条）`;
+    }
+    document.getElementById('todayRiskCount').textContent = countText;
 
     if (reviews.length === 0) {
       container.innerHTML = `
@@ -141,7 +181,7 @@ const App = {
             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
-          <p>暂无风险评价</p>
+          <p>${this.currentTimeRange === 'today' ? '今日暂无新增风险' : '该时间范围内暂无风险评价'}</p>
         </div>
       `;
       return;
@@ -177,9 +217,22 @@ const App = {
       tags += `<span class="tag tag-evidence">📷 有证据</span>`;
     }
 
-    const keywordTags = review.keywords.map(kw =>
+    const keywordTags = (review.keywords || []).map(kw =>
       `<span class="keyword-tag">${kw}</span>`
     ).join('');
+
+    let progressTags = '';
+    if (review.progress && review.progress.length > 0) {
+      const progressMap = {
+        contacted: { text: '📞 已联系', class: 'progress-contacted' },
+        compensated: { text: '🎁 已补偿', class: 'progress-compensated' },
+        replied: { text: '💬 已回复', class: 'progress-replied' }
+      };
+      progressTags = review.progress.map(p => {
+        const pm = progressMap[p];
+        return pm ? `<span class="progress-tag ${pm.class}">${pm.text}</span>` : '';
+      }).join('');
+    }
 
     return `
       <div class="risk-card ${levelClass}" data-id="${review.id}">
@@ -197,7 +250,7 @@ const App = {
         <div class="risk-content">${review.content.substring(0, 80)}${review.content.length > 80 ? '...' : ''}</div>
         <div class="risk-keywords">${keywordTags}</div>
         <div class="risk-footer">
-          <div class="risk-tags">${tags}</div>
+          <div class="risk-tags">${tags}${progressTags}</div>
           <div class="risk-author">— ${review.author}</div>
         </div>
       </div>
@@ -222,12 +275,16 @@ const App = {
   renderReviewList() {
     const container = document.getElementById('reviewList');
     const statusFilter = document.getElementById('reviewStatusFilter').value;
+    const progressFilter = document.getElementById('reviewProgressFilter').value;
     const storeFilter = document.getElementById('storeSelect').value;
 
     let reviews = [...AppData.reviews].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     if (statusFilter !== 'all') {
       reviews = reviews.filter(r => r.status === statusFilter);
+    }
+    if (progressFilter !== 'all') {
+      reviews = AppData.getReviewsByProgress(progressFilter).filter(r => reviews.some(rv => rv.id === r.id));
     }
     if (storeFilter !== 'all') {
       reviews = reviews.filter(r => r.store.includes(storeFilter));
@@ -253,6 +310,11 @@ const App = {
       const status = statusMap[review.status] || statusMap.pending;
       const isActive = this.selectedReviewId === review.id ? 'active' : '';
 
+      let progressDots = '';
+      if (review.progress && review.progress.length > 0) {
+        progressDots = `<span class="progress-dot" title="${review.progress.map(p => ({contacted:'已联系',compensated:'已补偿',replied:'已公开回复'}[p])).join('、')}">●</span>`;
+      }
+
       return `
         <div class="review-item ${isActive}" data-id="${review.id}">
           <div class="review-item-header">
@@ -264,6 +326,7 @@ const App = {
           <div class="review-item-content">${review.content.substring(0, 50)}...</div>
           <div class="review-item-footer">
             <span class="status-badge ${status.class}">${status.text}</span>
+            <span class="review-item-progress">${progressDots}</span>
             <span class="review-time">${this.getTimeAgo(review.date)}</span>
           </div>
         </div>
@@ -293,7 +356,7 @@ const App = {
     const levelText = { high: '高风险', medium: '中风险', low: '低风险' }[review.riskLevel];
 
     let ratingDisplay = '';
-    if (review.rating !== null) {
+    if (review.rating !== null && review.rating !== undefined) {
       const stars = '★'.repeat(review.rating) + '☆'.repeat(5 - review.rating);
       ratingDisplay = `<div class="detail-rating">评分: <span class="stars">${stars}</span></div>`;
     }
@@ -307,9 +370,42 @@ const App = {
     };
     const status = statusMap[review.status] || statusMap.pending;
 
-    const keywordTags = review.keywords.map(kw =>
+    const keywordTags = (review.keywords || []).map(kw =>
       `<span class="keyword-tag">${kw}</span>`
     ).join('');
+
+    const progressOptions = [
+      { key: 'contacted', label: '📞 已联系顾客', class: 'progress-contacted' },
+      { key: 'compensated', label: '🎁 已补偿', class: 'progress-compensated' },
+      { key: 'replied', label: '💬 已公开回复', class: 'progress-replied' }
+    ];
+
+    const progressCheckboxes = progressOptions.map(opt => {
+      const checked = review.progress && review.progress.includes(opt.key) ? 'checked' : '';
+      return `
+        <label class="progress-checkbox ${opt.class}">
+          <input type="checkbox" data-progress="${opt.key}" ${checked}>
+          <span>${opt.label}</span>
+        </label>
+      `;
+    }).join('');
+
+    const linkedDrafts = AppData.getDraftsForReview(id);
+    let linkedDraftsHtml = '';
+    if (linkedDrafts.length > 0) {
+      linkedDraftsHtml = `
+        <div class="detail-linked-drafts">
+          <h4>📝 回复准备 (${linkedDrafts.length})</h4>
+          ${linkedDrafts.map(d => `
+            <div class="linked-draft-item">
+              <span class="linked-draft-meta">${d.categoryName} · ${d.toneName}</span>
+              <span class="linked-draft-time">${this.getTimeAgo(d.createdAt)}</span>
+              <div class="linked-draft-content">${d.content.substring(0, 80)}...</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
 
     container.innerHTML = `
       <div class="detail-header">
@@ -363,6 +459,13 @@ const App = {
         </div>
       </div>
 
+      <div class="detail-progress">
+        <h4>处理进度</h4>
+        <div class="progress-checkboxes">
+          ${progressCheckboxes}
+        </div>
+      </div>
+
       <div class="detail-note">
         <h4>处理记录</h4>
         <textarea id="handleNote" placeholder="记录线下处理结果和跟进情况...">${review.handleNote || ''}</textarea>
@@ -378,6 +481,12 @@ const App = {
           </div>
         </div>
       ` : ''}
+
+      ${linkedDraftsHtml}
+
+      <div class="detail-reply-entry">
+        <button class="btn-primary btn-goto-reply" id="btnGotoReply">✏️ 撰写回复草稿</button>
+      </div>
     `;
 
     container.querySelectorAll('.action-btn').forEach(btn => {
@@ -392,6 +501,19 @@ const App = {
       });
     });
 
+    container.querySelectorAll('.progress-checkbox input').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const progressKey = cb.dataset.progress;
+        if (cb.checked) {
+          AppData.updateReviewProgress(id, progressKey);
+        } else {
+          AppData.removeReviewProgress(id, progressKey);
+        }
+        this.renderReviewList();
+        this.renderMonitor();
+      });
+    });
+
     const saveNoteBtn = document.getElementById('saveNoteBtn');
     if (saveNoteBtn) {
       saveNoteBtn.addEventListener('click', () => {
@@ -399,6 +521,34 @@ const App = {
         AppData.updateReviewStatus(id, review.status, note);
         this.showToast('记录已保存');
       });
+    }
+
+    const gotoReplyBtn = document.getElementById('btnGotoReply');
+    if (gotoReplyBtn) {
+      gotoReplyBtn.addEventListener('click', () => {
+        this.linkedReviewId = id;
+        const review = AppData.getReviewById(id);
+        const guessedCategory = ReplyTemplates.guessCategory(review.keywords);
+        this.currentCategory = guessedCategory;
+        this.updateCategoryButtons();
+        this.switchTab('reply');
+        this.updateReplyContextHint();
+        this.updateTemplateContent();
+      });
+    }
+  },
+
+  updateReplyContextHint() {
+    const hint = document.getElementById('replyContextHint');
+    if (this.linkedReviewId) {
+      const review = AppData.getReviewById(this.linkedReviewId);
+      if (review) {
+        hint.textContent = `关联评价: ${review.store} — ${review.content.substring(0, 30)}...`;
+        hint.classList.add('hint-linked');
+      }
+    } else {
+      hint.textContent = '选择场景和语气，生成专业回复';
+      hint.classList.remove('hint-linked');
     }
   },
 
@@ -450,16 +600,30 @@ const App = {
       return;
     }
 
-    AppData.addDraft({
+    const draft = {
       content,
       category: this.currentCategory,
       tone: this.currentTone,
       categoryName: ReplyTemplates.categories[this.currentCategory].name,
       toneName: ReplyTemplates.tones[this.currentTone].name
-    });
+    };
 
+    if (this.linkedReviewId) {
+      draft.reviewId = this.linkedReviewId;
+      const review = AppData.getReviewById(this.linkedReviewId);
+      if (review) {
+        draft.reviewStore = review.store;
+        draft.reviewSnippet = review.content.substring(0, 30);
+      }
+    }
+
+    AppData.addDraft(draft);
     this.renderDraftList();
     this.showToast('草稿已保存');
+
+    if (this.selectedReviewId === this.linkedReviewId) {
+      this.renderReviewDetail(this.selectedReviewId);
+    }
   },
 
   renderDraftList() {
@@ -470,11 +634,12 @@ const App = {
       return;
     }
 
-    container.innerHTML = AppData.drafts.slice(0, 5).map(draft => `
+    container.innerHTML = AppData.drafts.slice(0, 8).map(draft => `
       <div class="draft-item" data-id="${draft.id}">
         <div class="draft-header">
           <span class="draft-category">${draft.categoryName}</span>
           <span class="draft-tone">${draft.toneName}</span>
+          ${draft.reviewStore ? `<span class="draft-review-store">${draft.reviewStore}</span>` : ''}
           <span class="draft-date">${this.getTimeAgo(draft.createdAt)}</span>
         </div>
         <div class="draft-content">${draft.content.substring(0, 60)}...</div>
@@ -506,6 +671,93 @@ const App = {
         }
       });
     });
+  },
+
+  openAddReviewModal() {
+    document.getElementById('addReviewModal').classList.add('active');
+    this.populateAddReviewForm();
+  },
+
+  closeAddReviewModal() {
+    document.getElementById('addReviewModal').classList.remove('active');
+  },
+
+  populateAddReviewForm() {
+    const storeSelect = document.getElementById('inputStore');
+    const addresses = AppData.config.addresses;
+    let options = '<option value="">请选择门店</option>';
+    addresses.forEach(addr => {
+      options += `<option value="${addr.name}">${addr.name}</option>`;
+    });
+    storeSelect.innerHTML = options;
+
+    document.getElementById('inputPlatform').value = '';
+    document.getElementById('inputRating').value = 'null';
+    document.getElementById('inputRiskLevel').value = 'medium';
+    document.getElementById('inputContent').value = '';
+    document.getElementById('inputLikes').value = '0';
+    document.getElementById('inputAuthor').value = '';
+    document.getElementById('inputInfluencer').checked = false;
+    document.getElementById('inputEvidence').checked = false;
+    document.getElementById('matchedKeywords').style.display = 'none';
+  },
+
+  updateMatchedKeywords() {
+    const content = document.getElementById('inputContent').value;
+    const matched = AppData.matchKeywords(content);
+    const container = document.getElementById('matchedKeywords');
+    const list = document.getElementById('matchedKeywordsList');
+
+    if (matched.length > 0) {
+      container.style.display = 'block';
+      list.innerHTML = matched.map(kw => `<span class="keyword-tag">${kw}</span>`).join('');
+    } else {
+      container.style.display = 'none';
+    }
+  },
+
+  confirmAddReview() {
+    const platform = document.getElementById('inputPlatform').value;
+    const storeBranch = document.getElementById('inputStore').value;
+    const ratingVal = document.getElementById('inputRating').value;
+    const rating = ratingVal === 'null' ? null : parseInt(ratingVal);
+    const riskLevel = document.getElementById('inputRiskLevel').value;
+    const content = document.getElementById('inputContent').value.trim();
+    const likes = parseInt(document.getElementById('inputLikes').value) || 0;
+    const author = document.getElementById('inputAuthor').value.trim();
+    const sharedByInfluencer = document.getElementById('inputInfluencer').checked;
+    const hasEvidence = document.getElementById('inputEvidence').checked;
+
+    if (!platform) {
+      this.showToast('请选择来源平台');
+      return;
+    }
+    if (!storeBranch) {
+      this.showToast('请选择所属门店');
+      return;
+    }
+    if (!content) {
+      this.showToast('请输入评价内容');
+      return;
+    }
+
+    AppData.addReview({
+      platform,
+      storeBranch,
+      rating,
+      riskLevel,
+      content,
+      likes,
+      author: author || undefined,
+      sharedByInfluencer,
+      hasEvidence
+    });
+
+    this.closeAddReviewModal();
+    this.renderMonitor();
+    this.renderReviewList();
+    this.updateMonitorBadge();
+    this.showToast('评价已录入');
   },
 
   updateStoreSelector() {
@@ -590,9 +842,27 @@ const App = {
 
   renderKeywordsList() {
     const container = document.getElementById('keywordsList');
-    container.innerHTML = AppData.config.keywords.map(kw =>
-      `<span class="keyword-tag">${kw}</span>`
+    container.innerHTML = AppData.config.keywords.map((kw, index) =>
+      `<span class="keyword-tag">${kw}<button class="keyword-remove" data-index="${index}">×</button></span>`
     ).join('');
+
+    container.querySelectorAll('.keyword-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        AppData.config.keywords.splice(index, 1);
+        this.renderKeywordsList();
+      });
+    });
+  },
+
+  addKeyword() {
+    const input = document.getElementById('newKeyword');
+    const value = input.value.trim();
+    if (value && !AppData.config.keywords.includes(value)) {
+      AppData.config.keywords.push(value);
+      input.value = '';
+      this.renderKeywordsList();
+    }
   },
 
   saveConfig() {
@@ -618,12 +888,15 @@ const App = {
 
     AppData.config.storeName = storeName;
     AppData.config.addresses = addresses;
+    AppData.recalcKeywords();
     AppData.saveConfig();
 
     this.updateStoreSelector();
     this.updateTemplateContent();
+    this.renderMonitor();
+    this.renderReviewList();
     this.closeConfigModal();
-    this.showToast('配置已保存');
+    this.showToast('配置已保存，关键词已重新匹配');
   },
 
   showToast(message) {

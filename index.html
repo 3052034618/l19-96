@@ -63,10 +63,15 @@
       <section class="tab-panel active" id="panel-monitor">
         <div class="panel-header">
           <div class="panel-title">
-            <h2>今日新增风险</h2>
+            <h2>风险预警</h2>
             <span class="risk-count" id="todayRiskCount">共 0 条</span>
           </div>
           <div class="panel-filters">
+            <div class="time-range-group">
+              <button class="range-btn active" data-range="today">今日</button>
+              <button class="range-btn" data-range="week">近7天</button>
+              <button class="range-btn" data-range="all">全部</button>
+            </div>
             <select id="riskLevelFilter">
               <option value="all">全部风险等级</option>
               <option value="high">高风险</option>
@@ -80,6 +85,13 @@
               <option value="video">短视频探店</option>
               <option value="community">本地社群</option>
             </select>
+            <button class="btn-add-review" id="btnAddReview">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              录入评价
+            </button>
           </div>
         </div>
 
@@ -101,6 +113,13 @@
               <option value="misunderstanding">误会</option>
               <option value="malicious">恶意竞争</option>
               <option value="contact">需联系顾客</option>
+            </select>
+            <select id="reviewProgressFilter">
+              <option value="all">全部进度</option>
+              <option value="none">未跟进</option>
+              <option value="contacted">已联系</option>
+              <option value="compensated">已补偿</option>
+              <option value="replied">已公开回复</option>
             </select>
           </div>
         </div>
@@ -124,7 +143,7 @@
         <div class="panel-header">
           <div class="panel-title">
             <h2>回复草稿</h2>
-            <span class="reply-hint">选择场景和语气，生成专业回复</span>
+            <span class="reply-hint" id="replyContextHint">选择场景和语气，生成专业回复</span>
           </div>
         </div>
 
@@ -227,11 +246,101 @@
           <p class="form-hint">系统将重点监控包含以下关键词的负面评价</p>
           <div class="keywords-list" id="keywordsList">
           </div>
+          <div class="add-item" style="margin-top:10px">
+            <input type="text" id="newKeyword" placeholder="输入新的监控关键词">
+            <button class="btn-add" id="addKeyword">+ 添加</button>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="cancelConfig">取消</button>
         <button class="btn-primary" id="saveConfig">保存配置</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="addReviewModal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>手动录入风险评价</h2>
+        <button class="modal-close" id="closeAddReview">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group form-half">
+            <label>来源平台 *</label>
+            <select id="inputPlatform">
+              <option value="">请选择平台</option>
+              <option value="dianping">大众点评</option>
+              <option value="waimai">外卖平台</option>
+              <option value="video">短视频探店</option>
+              <option value="community">本地社群</option>
+            </select>
+          </div>
+          <div class="form-group form-half">
+            <label>所属门店 *</label>
+            <select id="inputStore">
+              <option value="">请选择门店</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-half">
+            <label>星级评分</label>
+            <select id="inputRating">
+              <option value="null">无评分</option>
+              <option value="1">1 星</option>
+              <option value="2">2 星</option>
+              <option value="3">3 星</option>
+              <option value="4">4 星</option>
+              <option value="5">5 星</option>
+            </select>
+          </div>
+          <div class="form-group form-half">
+            <label>风险等级</label>
+            <select id="inputRiskLevel">
+              <option value="high">高风险</option>
+              <option value="medium">中风险</option>
+              <option value="low">低风险</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>评价内容 *</label>
+          <textarea id="inputContent" rows="4" placeholder="粘贴或输入完整的评价内容..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-half">
+            <label>点赞数</label>
+            <input type="number" id="inputLikes" value="0" min="0">
+          </div>
+          <div class="form-group form-half">
+            <label>评价人</label>
+            <input type="text" id="inputAuthor" placeholder="用户昵称（可选）">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-half">
+            <label class="checkbox-label">
+              <input type="checkbox" id="inputInfluencer">
+              <span>达人转发</span>
+            </label>
+          </div>
+          <div class="form-group form-half">
+            <label class="checkbox-label">
+              <input type="checkbox" id="inputEvidence">
+              <span>有证据图片</span>
+            </label>
+          </div>
+        </div>
+        <div class="matched-keywords" id="matchedKeywords" style="display:none">
+          <label>命中关键词</label>
+          <div id="matchedKeywordsList"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelAddReview">取消</button>
+        <button class="btn-primary" id="confirmAddReview">保存并录入</button>
       </div>
     </div>
   </div>
