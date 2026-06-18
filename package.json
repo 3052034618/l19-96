@@ -1,0 +1,21 @@
+{
+  "name": "reputation-guard",
+  "version": "1.0.0",
+  "description": "面向中小商家的口碑预警工具",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "口碑",
+    "预警",
+    "商家",
+    "点评"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^28.3.3"
+  }
+}
