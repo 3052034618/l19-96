@@ -1,3 +1,17 @@
+const Utils = {
+  escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+      .replace(/\//g, '&#47;')
+      .replace(/`/g, '&#96;');
+  }
+};
+
 const AppData = {
   config: {
     storeName: '',
@@ -37,6 +51,7 @@ const AppData = {
       this.reviews.forEach(r => {
         if (!r.progress) r.progress = [];
         if (!r.keywords) r.keywords = this.matchKeywords(r.content);
+        if (!r.followups) r.followups = [];
       });
       this.saveReviews();
     }
@@ -50,6 +65,10 @@ const AppData = {
     const saved = localStorage.getItem('rg_drafts');
     if (saved) {
       this.drafts = JSON.parse(saved);
+      this.drafts.forEach(d => {
+        if (!d.status) d.status = 'preparing';
+      });
+      this.saveDrafts();
     }
   },
 
@@ -82,7 +101,8 @@ const AppData = {
         status: 'pending',
         riskLevel: 'high',
         handleNote: '',
-        progress: []
+        progress: [],
+        followups: []
       },
       {
         id: 'r002',
@@ -100,7 +120,11 @@ const AppData = {
         status: 'pending',
         riskLevel: 'high',
         handleNote: '',
-        progress: []
+        progress: [],
+        followups: [
+          { id: 'f001', type: 'call', content: '已电话联系顾客，顾客表示可接受全额退款+下次免单补偿', date: new Date(today.getTime() - 1 * 60 * 60 * 1000).toISOString() },
+          { id: 'f002', type: 'compensation', content: '已通过外卖平台发起退款 68 元，并赠送 80 元代金券', date: new Date(today.getTime() - 0.5 * 60 * 60 * 1000).toISOString() }
+        ]
       },
       {
         id: 'r003',
@@ -119,7 +143,8 @@ const AppData = {
         status: 'pending',
         riskLevel: 'high',
         handleNote: '',
-        progress: []
+        progress: [],
+        followups: []
       },
       {
         id: 'r004',
@@ -137,7 +162,8 @@ const AppData = {
         status: 'pending',
         riskLevel: 'high',
         handleNote: '',
-        progress: []
+        progress: [],
+        followups: []
       },
       {
         id: 'r005',
@@ -155,7 +181,8 @@ const AppData = {
         status: 'pending',
         riskLevel: 'medium',
         handleNote: '',
-        progress: []
+        progress: [],
+        followups: []
       },
       {
         id: 'r006',
@@ -173,7 +200,8 @@ const AppData = {
         status: 'pending',
         riskLevel: 'low',
         handleNote: '',
-        progress: []
+        progress: [],
+        followups: []
       },
       {
         id: 'r007',
@@ -191,7 +219,8 @@ const AppData = {
         status: 'misunderstanding',
         riskLevel: 'low',
         handleNote: '正面评价附带排队建议，已标记为误会，不影响口碑。',
-        progress: []
+        progress: [],
+        followups: []
       },
       {
         id: 'r008',
@@ -209,7 +238,11 @@ const AppData = {
         status: 'contact',
         riskLevel: 'medium',
         handleNote: '已联系顾客了解情况',
-        progress: ['contacted']
+        progress: ['contacted'],
+        followups: [
+          { id: 'f010', type: 'call', content: '电话联系顾客，对方反馈送达太慢+餐洒漏，已道歉并承诺补偿', date: new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000 + 30 * 60 * 1000).toISOString() },
+          { id: 'f011', type: 'public_reply', content: '已在社群帖子下公开回复致歉：https://example.com/post/123', date: new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString() }
+        ]
       }
     ];
 
@@ -238,6 +271,17 @@ const AppData = {
       return this.reviews.filter(r => new Date(r.date) >= weekAgo);
     }
     return this.reviews;
+  },
+
+  getStats(reviews) {
+    const list = reviews || this.reviews;
+    return {
+      total: list.length,
+      highRisk: list.filter(r => r.riskLevel === 'high').length,
+      influencer: list.filter(r => r.sharedByInfluencer).length,
+      evidence: list.filter(r => r.hasEvidence).length,
+      noFollowup: list.filter(r => !r.progress || r.progress.length === 0).length
+    };
   },
 
   getTodayReviews() {
@@ -291,7 +335,8 @@ const AppData = {
       status: 'pending',
       riskLevel: reviewData.riskLevel || 'medium',
       handleNote: '',
-      progress: []
+      progress: [],
+      followups: []
     };
 
     this.reviews.unshift(review);
@@ -335,13 +380,44 @@ const AppData = {
     this.saveReviews();
   },
 
+  addFollowup(reviewId, followupData) {
+    const review = this.getReviewById(reviewId);
+    if (review) {
+      if (!review.followups) review.followups = [];
+      const followup = {
+        id: 'f' + Date.now(),
+        type: followupData.type || 'note',
+        content: followupData.content || '',
+        date: new Date().toISOString()
+      };
+      review.followups.push(followup);
+      this.saveReviews();
+      return followup;
+    }
+    return null;
+  },
+
   addDraft(draft) {
     this.drafts.unshift({
       id: 'd' + Date.now(),
+      status: 'preparing',
       ...draft,
       createdAt: new Date().toISOString()
     });
     this.saveDrafts();
+  },
+
+  updateDraftStatus(id, status) {
+    const draft = this.drafts.find(d => d.id === id);
+    if (draft) {
+      draft.status = status;
+      draft.statusUpdatedAt = new Date().toISOString();
+      this.saveDrafts();
+    }
+  },
+
+  getDraftById(id) {
+    return this.drafts.find(d => d.id === id);
   },
 
   deleteDraft(id) {
@@ -351,6 +427,16 @@ const AppData = {
 
   getDraftsForReview(reviewId) {
     return this.drafts.filter(d => d.reviewId === reviewId);
+  },
+
+  getAggregateDraftStatus(reviewId) {
+    const drafts = this.getDraftsForReview(reviewId);
+    if (drafts.length === 0) return null;
+    const priority = ['published', 'preparing', 'revising'];
+    for (const p of priority) {
+      if (drafts.some(d => d.status === p)) return p;
+    }
+    return drafts[0].status;
   }
 };
 

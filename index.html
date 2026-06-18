@@ -95,6 +95,9 @@
           </div>
         </div>
 
+        <div class="risk-stats" id="riskStats">
+        </div>
+
         <div class="risk-cards" id="riskCards">
         </div>
       </section>
@@ -189,6 +192,14 @@
 
             <div class="reply-editor">
               <h3>自定义编辑</h3>
+              <div class="editor-status-row">
+                <label>草稿状态</label>
+                <select id="draftStatusSelect">
+                  <option value="preparing">准备中</option>
+                  <option value="published">已发布</option>
+                  <option value="revising">需要修改</option>
+                </select>
+              </div>
               <textarea id="replyEditor" placeholder="在此编辑您的回复内容..."></textarea>
               <div class="editor-actions">
                 <button class="btn-secondary" id="btnUseTemplate">使用模板填充</button>
